@@ -1,0 +1,246 @@
+---
+title: "Assignment 1"
+author: "Abi Attrell"
+date: "16 October 2015"
+output: html_document
+---
+
+#Loading and preprocessing the data
+
+The "Activity monitoring data" file was downloaded from the Coursera website, and then unzipped.
+
+Immediately afterwards, the CSV file was loaded into R and formatted using the following commands:
+
+```{r, echo=TRUE}
+data <- read.csv("activity.csv"); #reads the CSV file
+library (lubridate); #loads the lubridate package for manipulating dates
+data$date <- ymd(data$date); #converts the date column to POSIXcT format
+```
+
+
+#What is the mean total number of steps taken per day?
+
+Firstly, I created a table called tableTotals showing the total number of steps for each day. This was achieved using the following code:
+
+```{r, echo=TRUE}
+#create a list of all the days we collected data on
+listDates <- ymd(levels(as.factor(data$date)));
+
+#initialise variables
+totalSteps <- vector();
+tableTotals <- data.frame(listDates);
+
+#iterate over every day from the list
+for (i in 1:length(listDates)) 
+{
+  #subset data and calculate total for that day
+  selectDate <- data[data$date == listDates[i],];
+  totalSteps <- c(totalSteps, sum(selectDate$steps));
+}
+
+#merge the total steps vector with the dataframe of dates
+tableTotals <- cbind(tableTotals, totalSteps);
+names(tableTotals) <- c("date", "totalSteps") #column titles
+
+tableTotals #displays the table for you to inspect
+```
+
+Note: I decided not to remove NAs when calculating the sum. If data is missing for part of the day, than the total for that day would be lower than it should be, so the total for that day should also reflect this and be missing (NA). I have explored an alternative solution in the Inputting Missing Values section.
+
+Next, I plotted a histogram, using the following code:
+
+```{r, echo=TRUE}
+h1 <- hist(tableTotals$totalSteps, main="Histogram of Total Number of Steps in One Day", xlab="Number of steps", col="Purple");
+```
+
+Note: My choice not to remove NAs affects the shape of the histogram - otherwise on dates such as 01/10/2012 which contain only NAs (every time interval has NA steps), the sum would be 0. Obviously, we need to distinguish days with no readings from days where the total steps is actually zero. If we did not, this would skew the histogram, making the lowest range bar have a much higher frequency than it should, because of these extra 0 values.
+
+Finally, I calculated the median and mean for the data set:
+
+```{r, echo=TRUE}
+meanSteps <- mean(tableTotals$totalSteps, na.rm=TRUE);
+medianSteps <- median(tableTotals$totalSteps, na.rm=TRUE);
+print(paste("Mean: ", meanSteps, "   Median: ", medianSteps)) #displays results
+```
+
+Note: NAs are removed here so that we get the mean or median across all the days with complete data sets only. Otherwise, the median and mean would evaluate to NA, because of my earlier decision.
+
+##What is the average daily activity pattern?
+
+Similiarly, I calculated a table of average steps across all days for each interval period during the day:
+
+```{r, echo=TRUE}
+#create a list of time intervals that occur each day
+listTimes <- as.integer(levels(as.factor(data$interval)));
+#initialise a vector for total number of steps at a particular time in the day
+meanSteps <- vector();
+tableMeans <- data.frame(listTimes);
+for (i in 1:length(listTimes)) #iterate over every day
+{
+  #subset data and calculate mean for that particular time across all days
+  selectTime <- data[data$interval == listTimes[i],];
+  meanSteps <- c(meanSteps, mean(selectTime$steps, na.rm=TRUE));
+}
+#merge the average steps vector with the dataframe of dates
+tableMeans <- cbind(tableMeans, meanSteps);
+names(tableMeans) <- c("time", "meanSteps"); #column headings
+
+```
+
+Note: As we are taking the mean (instead of the total) this time, we do not lose anything by excluding the NAs - the mean is still reflective of the data set. 
+
+After I had calculated this, I could then create a time series plot:
+
+```{r, echo=TRUE}
+plot(tableMeans, type="l", main="Graph 2: Average Daily Activity Pattern", xlab="Time interval (HHMM)", ylab="Mean number of steps");
+```
+
+Inspection showed a peak around 8.30-9.00am in the morning, possibly when the subject went for a run or jog in the morning.
+
+I confirmed this with the following calculations:
+
+```{r, echo=TRUE}
+#Using the max() function to find the highest value for meanSteps
+maxSteps <- tableMeans[tableMeans$meanSteps==(max(tableMeans$meanSteps, na.rm=TRUE)),];
+maxSteps
+```
+
+This indicates that the 5 minute interval with the maximum number of steps is at 8.35am, where on average 206 steps were taken.
+
+#Inputting missing values
+
+The data set provided contains many missing values (NAs). The following code can be used to find out how many rows contain missing values in the table:
+
+```{r, echo=TRUE}
+#complete.cases() returns a boolean vector indicating whether each row in the dataframe contains a complete data values (i.e. this evaluates to false if there is an NA on that row)
+summary(complete.cases(data));
+````
+
+This indicates there are 2304 incomplete rows in the data set that contain missing values (NAs).
+
+There were two suggestions for filling in the missing values for this coursework in the assignment instructions:
+(1) Using the mean or median for that day
+(2) Using the mean for that 5 minute interval
+
+I feel the best approach to fill in these missing values, would be to use the mean number of steps for that time interval. This would better preserve the daily activity pattern as we would fill in the data using the average for that time interval calculated across all of the days. Moreover, it allows us to fill in missing values on days where all of the data is missing, such as 01/10/2012, which would not be possible using the first suggestion.
+
+This can be achieved using the following code:
+
+```{r}
+#create boolean vector to indicate if data row is complete
+good <- complete.cases(data)
+
+#replace the NAs with time interval mean
+for (i in 1:(dim(data)[1])) #iterate through every row in turn
+    {
+          if (good[i]==FALSE) #if the data for that row is incomplete
+              data[i,1] <- tableMeans[tableMeans$time==(data[i, 3]),][,2]
+#replace number of steps (data, column 1) with time interval for that time (data, column 3) from that time in tableMeans table (tablemeans, column 2)
+}
+
+#to show this has worked, run complete.cases() again:
+summary(complete.cases(data));
+```
+
+As we can see, there are now no missing values (NAs) as the boolean vector shows TRUE for all 17568 rows. We now have a dataset with the missing data filled in!
+
+So what are the consequences of this method? Let's investigate by replotting that histogram of total steps from earlier:
+
+```{r, echo = TRUE}
+#reset variables
+totalSteps <- vector();
+tableTotals <- data.frame(listDates); #we are fine to use the earlier version of listDates
+
+#iterate over every day from the list
+for (i in 1:length(listDates)) 
+{
+  #subset data and calculate total for that day
+  selectDate <- data[data$date == listDates[i],];
+  totalSteps <- c(totalSteps, sum(selectDate$steps));
+}
+
+#merge the total steps vector with the dataframe of dates
+tableTotals <- cbind(tableTotals, totalSteps);
+names(tableTotals) <- c("date", "totalSteps") #column titles
+
+#plot the histogram
+h2 <- hist(tableTotals$totalSteps, main="Histogram of Total Number of Steps in One Day", xlab="Number of steps", col="Purple");
+```
+
+The histogram is very similiar, except that now the middle bar has a much higher frequency. We can get the exact frequency by looking at the histogram info:
+
+```{r, echo=TRUE}
+h1; #Original histogram (NAs were omitted)
+h2; #New histogram (NAs were replaced)
+```
+
+The frequency of the middle bar has increased from 28 to 36. This is because the additional data that has been included in the histogram is based on averages for each time interval: the total for the extra days included will be equal to the mean if the data for that day consisted entirely of NAs, or close to the mean if the data was a mix of recorded values and NAs.
+
+Let's look at the mean and median number of steps per day for this new data set:
+
+```{r, echo=TRUE}
+meanSteps <- mean(tableTotals$totalSteps, na.rm=TRUE);
+medianSteps <- median(tableTotals$totalSteps, na.rm=TRUE);
+print(paste("Mean: ", meanSteps, "   Median: ", medianSteps));
+```
+
+The mean has remained the same: 10766.1886792453
+
+The median has changed from 10765 to 10766.1886792453
+
+The median is now equal to the mean, as the middle value is now for a day that previously had only missing data (NAs) and would have been omitted from the first histogram. As we have replaced NAs with the mean for each time interval, the sum of all the intervals is now exactly equal to the mean number of steps per day.
+
+It may also be worth mentioning that the standard deviation of the data will have decreased as a larger proportion of the data lies close to the mean, as we have added additional data that conforms to the mean perfectly and have not added any data to the dataset that does not.
+
+#Are there differences in activity patterns between weekdays and weekends?
+
+Only one way to find out! Let's introduce a new column in the data set which shows if a date is a weekday or a weekend:
+
+```{r, echo=TRUE}
+#add a day column
+data$day <- weekdays(data$date);
+
+#add a column with a boolean for whether that day is a weekend (false if weekday)
+data$IsWeekend <- data$day %in% c('Sunday','Saturday');
+```
+
+Now that we have a nice table of data, lets make a panel plot to compare the average daily activity pattern for weekdays vs weekends:
+
+```{r, echo = TRUE}
+#subset the data
+weekday <- data[data$IsWeekend==FALSE,];
+weekend <- data[data$IsWeekend==TRUE,];
+
+#initialise dataframe
+tableMeans <- data.frame(listTimes);
+
+#calculate the mean for each interval time for weekdays
+meanSteps <- vector();
+for (i in 1:length(listTimes))
+{
+  selectTime <- weekday[weekday$interval == listTimes[i],];
+  meanSteps <- c(meanSteps, mean(selectTime$steps));
+}
+tableMeans <- cbind(tableMeans, meanSteps);
+
+#calculate the mean for each interval time for weekends
+meanSteps <- vector();
+for (i in 1:length(listTimes))
+{
+  selectTime <- weekend[weekend$interval == listTimes[i],];
+  meanSteps <- c(meanSteps, mean(selectTime$steps));
+}
+tableMeans <- cbind(tableMeans, meanSteps);
+names(tableMeans) <- c("time", "weekdaySteps", "weekendSteps");
+
+#plot graphs one above the other, with a shared x axis
+par(mfrow=c(2,1), mar=c(0,0,0,0));
+plot(tableMeans$time, tableMeans$weekdaySteps, type="l", col="green");
+plot(tableMeans$time, tableMeans$weekendSteps, type="l", col="purple");
+mtext("Daily Activity Pattern", side=3, line=11); #title of graph
+mtext("Time (HHMM)", side=3, line=0.2); #x axis label
+legend("topleft", c("Weekday", "Weekend"), lty=c(1,1), lwd=c(2,2), col=c("green", "purple")); #legend for colour coding of lines
+
+```
+
+As you can see from the graphs, the activity pattern varies considerably between weekdays and weekends. During the weekend, the subject exercises at a more consistent level throughout the day, taking more steps during the afternoon period than they would during the week.
